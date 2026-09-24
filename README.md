@@ -1,5 +1,10 @@
 # @hallaxius/skills
 
+[![CI](https://github.com/Hallaxius/skills/actions/workflows/ci.yml/badge.svg)](https://github.com/Hallaxius/skills/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Node.js >= 18](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
+[![MCP](https://img.shields.io/badge/MCP-stdio-blue.svg)](https://modelcontextprotocol.io)
+
 An unofficial [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that exposes [skills.sh](https://skills.sh) — The Agent Skills Directory — as tools for AI agents and coding assistants.
 
 > **Not affiliated.** This is an independent community project maintained by [Hallaxius](https://github.com/hallaxius). It is NOT associated with, endorsed by, or supported by skills.sh or Vercel. All data served by this server belongs to skills.sh and its users, and is fetched live from the public site.
