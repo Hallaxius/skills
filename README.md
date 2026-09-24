@@ -86,7 +86,7 @@ All optional — the server is fully functional with none of them set. Add them 
 
 | Variable | Default | Allowed range | Description |
 |---|---|---|---|
-| `VERCEL_OIDC_TOKEN` | none | — | Vercel OIDC token for the [documented skills.sh v1 API](https://skills.sh/docs/api). Enables semantic (multi-word) search via `search_skills` and skill file contents via `get_skill` (`include_files: true`). Obtain with `vercel link` followed by `vercel env pull` (written to `.env.local`, valid for roughly 12 hours). If the token expires, search automatically falls back to the public endpoint. |
+| `VERCEL_OIDC_TOKEN` | none | — | Vercel OIDC token for the [documented skills.sh v1 API](https://skills.sh/docs/api). Enables semantic (multi-word) search via `search_skills` and skill file contents via `get_skill` (`include_files: true`). To obtain one: install the Vercel CLI (`npm i -g vercel`), enable OIDC Federation for any project (dashboard → Settings → Security → Secure backend access), then run `vercel link` followed by `vercel env pull` (writes it to `.env.local`, valid for roughly 12 hours — re-pull to refresh, and never commit that file). If the token expires, search automatically falls back to the public endpoint. |
 | `SKILLS_MIN_INTERVAL_MS` | `500` | 0–60000 | Minimum gap between consecutive requests to skills.sh. Raise it if you hit `RATE_LIMITED`. |
 | `SKILLS_TIMEOUT_MS` | `10000` | 1000–60000 | Timeout per request. Raise it on slow networks. |
 
@@ -434,12 +434,14 @@ Violations are rejected before any network activity and surface as tool errors w
 
 ```json
 {
-  "$schema": "https://opencode.ai/config.schema.json",
+  "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "skills-sh": {
-      "type": "local",
-      "command": ["npx", "-y", "@hallaxius/skills"],
-      "enabled": true
+    "servers": {
+      "skills-sh": {
+        "type": "local",
+        "command": ["npx", "-y", "@hallaxius/skills"],
+        "disabled": false
+      }
     }
   }
 }
@@ -472,6 +474,8 @@ claude mcp add skills-sh -- npx -y @hallaxius/skills
   }
 }
 ```
+
+Avoid pasting the token into the file when the client supports environment substitution (OpenCode: `"VERCEL_OIDC_TOKEN": "{env:VERCEL_OIDC_TOKEN}"`).
 
 ## How it works
 
