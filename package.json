@@ -27,7 +27,7 @@
   },
   "type": "module",
   "bin": {
-    "skills-sh-mcp": "./dist/index.js"
+    "skills-sh-mcp": "dist/index.js"
   },
   "files": [
     "dist"
