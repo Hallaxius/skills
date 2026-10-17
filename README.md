@@ -7,7 +7,7 @@
 
 An unofficial [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that exposes [skills.sh](https://skills.sh) — The Agent Skills Directory — as tools for AI agents and coding assistants.
 
-> **Not affiliated.** This is an independent community project maintained by [Hallaxius](https://github.com/hallaxius). It is NOT associated with, endorsed by, or supported by skills.sh or Vercel. All data served by this server belongs to skills.sh and its users, and is fetched live from the public site.
+> **Not affiliated.** This is an independent community project maintained by [Hallaxius](https://github.com/hallaxius). It is NOT associated with, endorsed by, or supported by skills.sh or Vercel. Directory data comes from skills.sh and its users; local management reads your configured filesystem and GitHub sources.
 
 ## Table of contents
 
@@ -22,6 +22,10 @@ An unofficial [Model Context Protocol](https://modelcontextprotocol.io) (MCP) se
   - [get_skill](#get_skill)
   - [get_skill_audits](#get_skill_audits)
   - [get_official_skills](#get_official_skills)
+  - [list_installed_skills](#list_installed_skills)
+  - [check_skill_updates](#check_skill_updates)
+  - [remove_skill and update_skill](#remove_skill-and-update_skill)
+  - [install_skill](#install_skill)
   - [Validation caps quick reference](#validation-caps-quick-reference)
 - [MCP client configuration](#mcp-client-configuration)
 - [How it works](#how-it-works)
@@ -45,8 +49,9 @@ This server lets any MCP-capable client query skills.sh directly:
 - **Vet** a skill before installing it: aggregated security audits from Socket, Snyk, Gen Agent Trust Hub, Runlayer and ZeroLeaks.
 - **Browse** the official/curated directory of trusted owners (Vercel, Anthropic, Microsoft, Google, Supabase, Cloudflare, ...).
 - **Install** what you find with the official [`npx skills`](https://github.com/vercel-labs/skills) CLI — every result includes the exact command to run.
+- **Install and manage skills** in `.agents/skills`: install one GitHub skill (preview first, never overwriting), list installed skills, check GitHub updates, and preview a selected removal or update. Writes require explicit host opt-in and confirmation, and every mutating tool defaults to a read-only preview.
 
-Everything runs over the standard MCP stdio transport. There is no database, no backend of our own, and no telemetry: the server talks only to skills.sh.
+Everything runs over the standard MCP stdio transport. There is no database, backend of our own, or telemetry. Discovery talks to skills.sh; update checks and downloads use `api.github.com`.
 
 ## What you get
 
@@ -57,8 +62,13 @@ Everything runs over the standard MCP stdio transport. There is no database, no 
 | `get_skill` | Full details for one skill (description, installs, topics, related, optional file contents) | only for `include_files` |
 | `get_skill_audits` | Third-party security audits for a skill | no |
 | `get_official_skills` | Official/curated skills grouped by owner | no |
+| `list_installed_skills` | Inventory of canonical project/global `.agents/skills` directories | no |
+| `check_skill_updates` | Read-only update/local-change assessment for installed GitHub skills | optional GitHub token |
+| `remove_skill` | Preview or explicitly confirm removal of one tracked canonical skill | no |
+| `update_skill` | Preview or explicitly confirm updating one tracked canonical GitHub skill | optional GitHub token |
+| `install_skill` | Preview or explicitly confirm installing one GitHub skill into canonical `.agents/skills` (never overwrites an existing directory or lock entry) | optional GitHub token |
 
-All five tools are read-only, return a single pretty-printed JSON text block, and report failures as MCP tool errors with a stable `[CODE] message` prefix.
+There are ten tools: seven are read-only; `remove_skill`, `update_skill`, and `install_skill` can write but default to a read-only preview. All return a single pretty-printed JSON text block and report failures as MCP tool errors with a stable `[CODE] message` prefix.
 
 ## Quick start
 
@@ -76,25 +86,29 @@ The server starts on stdio and waits for an MCP client. Point your client's MCP 
 
 - Node.js 18 or newer (for `npx`), or [Bun](https://bun.sh)
 - An MCP-capable client (Claude Desktop, Claude Code, Cursor, OpenCode, ...)
-- Internet access to `skills.sh`
+- Internet access to `skills.sh` for discovery, and `api.github.com` for update checks/downloads
 
 That's all — the server has no other dependencies or services.
 
 ## Environment variables
 
-All optional — the server is fully functional with none of them set. Add them as an `env` block in your MCP client config (see [Variants](#variants) below).
+Discovery works without configuration. Project-local management requires `SKILLS_PROJECT_ROOT`; writes also require `SKILLS_ALLOW_MUTATIONS=true`. Add configuration as an `env` block in your MCP client config (see [Variants](#variants) below).
 
 | Variable | Default | Allowed range | Description |
 |---|---|---|---|
 | `VERCEL_OIDC_TOKEN` | none | — | Vercel OIDC token for the [documented skills.sh v1 API](https://skills.sh/docs/api). Enables semantic (multi-word) search via `search_skills` and skill file contents via `get_skill` (`include_files: true`). To obtain one: install the Vercel CLI (`npm i -g vercel`), enable OIDC Federation for any project (dashboard → Settings → Security → Secure backend access), then run `vercel link` followed by `vercel env pull` (writes it to `.env.local`, valid for roughly 12 hours — re-pull to refresh, and never commit that file). If the token expires, search automatically falls back to the public endpoint. |
-| `SKILLS_MIN_INTERVAL_MS` | `500` | 0–60000 | Minimum gap between consecutive requests to skills.sh. Raise it if you hit `RATE_LIMITED`. |
-| `SKILLS_TIMEOUT_MS` | `10000` | 1000–60000 | Timeout per request. Raise it on slow networks. |
+| `SKILLS_MIN_INTERVAL_MS` | `500` | 0–60000 | Minimum gap between requests, in separate skills.sh and GitHub queues. |
+| `SKILLS_TIMEOUT_MS` | `10000` | 1000–60000 | Timeout per request, including GitHub response bodies. |
+| `SKILLS_PROJECT_ROOT` | none | existing absolute directory | Approved project root. Never inferred from the server's working directory or supplied as a tool argument. |
+| `SKILLS_ALLOW_MUTATIONS` | `false` | exact `true` enables writes | Host authorization for confirmed removals, updates, and installs. Previews still work when disabled. |
+| `GITHUB_TOKEN` / `GH_TOKEN` | none | — | Optional GitHub API token for update checks/downloads; `GITHUB_TOKEN` takes precedence. Never sent to skills.sh. |
+| `XDG_STATE_HOME` | none | existing absolute directory | When set, global CLI metadata is read/written at `$XDG_STATE_HOME/skills/.skill-lock.json`. Skill contents still live in `~/.agents/skills`. |
 
-Without a token the server still works fully: it uses the public search endpoint that the official `npx skills` CLI itself uses, the public audit API, and the same leaderboard/official/skill pages you see in the browser.
+Without a Vercel token, discovery uses the public search endpoint, public audit API, and public leaderboard/official/skill pages. GitHub operations work without a GitHub token but have lower upstream rate limits.
 
 ## Tools
 
-Examples below are abridged from real live calls — install counts and leaderboards change over time.
+Discovery examples are abridged from real live calls — install counts and leaderboards change over time. Local-management examples illustrate the configuration and confirmation flow.
 
 ### search_skills
 
@@ -388,14 +402,103 @@ Official/curated skills grouped by owner — the same dataset as the [skills.sh 
 | `owners[].repos[].totalInstalls` | number | Aggregate for the repo |
 | `owners[].repos[].skills[]` | `{name, installs}[]` | Skills in the repo |
 
+### list_installed_skills
+
+Lists skills on the **machine running this MCP server**, not automatically on a remote client's machine. No OpenCode installation or OpenCode MCP is needed.
+
+- `scope`: `project` (default) or explicitly `global`.
+- `limit`: 1–100, default 50; `offset`: 0–2000, default 0.
+- Project: `$SKILLS_PROJECT_ROOT/.agents/skills/<name>/SKILL.md`.
+- Global: `~/.agents/skills/<name>/SKILL.md`.
+
+Returns `scope`, `directory`, `total`, pagination, `skills`, and `warnings`. Entries include `name`, `path`, `managed`, and available source metadata. Untracked regular directories can be listed, but cannot be mutated. Symlinked skills are not managed. Other agent-specific copies are outside this scope.
+
+### check_skill_updates
+
+Checks existing canonical skills without writing anything. Accepts `scope`, optional exact directory `name`, `limit` (1–100, default 20), and `offset` (0–2000).
+
+```json
+{ "scope": "project", "name": "mcp-builder" }
+```
+
+Each result has one of: `up_to_date`, `update_available`, `local_changes`, `unsupported`, or `unknown`, plus an explanatory `reason` when available. A network failure or missing baseline is **not** reported as up-to-date.
+
+Updates support GitHub CLI lock entries with a recorded `skillPath` ending in `SKILL.md` and a usable content baseline. Project metadata uses `skills-lock.json` version 1; global metadata uses `.agents/.skill-lock.json` version 3, or the XDG location above. Recorded refs are respected; otherwise GitHub's `HEAD` is used. Local, well-known, missing-baseline, and unsupported lock formats are not automatically upgraded or overwritten.
+
+**Legacy project restriction:** the CLI's project `computedHash` concatenates paths and bytes without framing, so equality alone cannot prove that local file boundaries are unchanged. Content replacement requires a recorded immutable `skillFolderHash` as well. Without it, exact matches to current upstream are reported `up_to_date`; differences are `unknown` and updates are refused, even with confirmation. No baseline is silently created from today's potentially edited files. Global CLI installations normally include the immutable baseline; do not fabricate one to bypass a refusal.
+
+### remove_skill and update_skill
+
+Select **one installed directory name**, not a skills.sh id or filesystem path. Both accept:
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `scope` | `project` | `project` or explicitly `global` |
+| `name` | required | Portable directory basename, 1–100 ASCII letters/digits/`.`/`_`/`-`, starting with a letter or digit; Windows device names and ambiguous suffixes are refused |
+| `dry_run` | `true` | Preview only; no files, locks, or staging directories are written |
+| `confirm` | `false` | Must be `true` for execution |
+| `confirmation_token` | absent | SHA-256 freshness token returned by the corresponding preview |
+
+First preview the operation:
+
+```json
+{ "name": "mcp-builder", "scope": "project" }
+```
+
+Review the returned source, destination, file count, warnings, and (for updates) immutable upstream hash. After **human approval** and enabling `SKILLS_ALLOW_MUTATIONS=true` in the server environment, call the **same tool**:
+
+```json
+{
+  "name": "mcp-builder",
+  "scope": "project",
+  "dry_run": false,
+  "confirm": true,
+  "confirmation_token": "<copy the 64-character token from that tool's fresh preview>"
+}
+```
+
+The token binds the operation, scope, selected path, current lock and files, and upstream snapshot. It is a freshness check, **not authentication or proof of human consent**; the MCP client must enforce approval. Changed state requires a new preview. Updates refuse local content changes and verify downloaded bytes against immutable Git blob hashes. Removal deletes only the selected canonical directory and its lock entry; other agents' copies/links are left alone.
+
+Windows Git checkouts can convert LF text to CRLF. A uniform, valid UTF-8 CRLF file is accepted only when converting it back to LF reproduces the exact recorded Git blob hash. Updates preserve existing CRLF text formatting; new files use upstream bytes. Binary files, mixed line endings, and other content changes are not normalized away.
+
+Management uses Node built-ins and GitHub's Git Data API rather than spawning the Skills CLI. This preserves Node 18 support without requiring the newer runtime needed by Skills CLI 1.7.2. No skill-bundled script, `git`, `npm`, shell, or OpenCode command is executed. Files are staged on the same filesystem and renames are rolled back on an exception; existing lock metadata is preserved. **The directory and lock are not a crash-atomic filesystem transaction.** Stop other installers/editors before a mutation: the MCP guard serializes cooperating MCP writes, not unrelated CLI processes or hostile local writers.
+
+If a process is interrupted or rollback cannot finish, preserve `.agents/.skills-mcp.lock`, `.agents/.skills-mcp-txn-*`, and any `.skills-mcp-*.tmp` lock file. Stop the server and other writers, inspect `recovery.json`, the `previous` backup, and the CLI lock, and restore consistent files/metadata before manually clearing a stale guard. There is no automatic recovery or stale-lock stealing.
+
+Supported snapshots are bounded to 256 files, 2 MiB per file, 16 MiB total (including checkout conversion), and portable paths up to 500 characters/20 components. Symlinks, junctions, submodules, case/Unicode-colliding paths, Windows device names, special files, and nested `.git`/`node_modules` data are refused rather than silently discarded.
+
+### install_skill
+
+Installs one GitHub-hosted skill into the canonical `.agents/skills` directory from immutable Git data (`api.github.com`). Accepts:
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `id` | required | `{owner}/{repo}/{skill}`. GitHub only; well-known `{domain}/{skill}` ids are installed with the official CLI |
+| `path` | absent | Repo-relative folder containing `SKILL.md`, used to disambiguate a repository with several same-named skills |
+| `scope` | `project` | `project` or explicitly `global` |
+| `dry_run` | `true` | Preview only; nothing is written |
+| `confirm` | `false` | Must be `true` for execution |
+| `confirmation_token` | absent | SHA-256 freshness token returned by the preview |
+
+First preview:
+
+```json
+{ "id": "vercel-labs/skills/find-skills", "scope": "project" }
+```
+
+The preview resolves the repository default branch (`HEAD`), requires a complete, non-truncated, bounded tree, and returns the source, destination, resolved `skillPath`, immutable `latest_hash`, file count and bytes, warnings, and a fresh token. Execution follows the same flow described above: `SKILLS_ALLOW_MUTATIONS=true` in the server environment, then the same call with `dry_run: false`, `confirm: true`, and the fresh `confirmation_token`.
+
+Install is additive by design. It refuses an existing directory or lock entry with the same name (`CONFLICT`) instead of overwriting, creates missing parent directories only, and commits the files and a new lock entry (`computedHash` and `skillFolderHash`) through the same staged, guarded transaction as removals and updates. Every downloaded file is verified against its immutable Git blob hash and size before anything is written. Well-known domains, local paths, non-GitHub sources, symbol links, oversized snapshots, and unsafe paths are refused. No skill-bundled script is executed.
+
 ### Validation caps quick reference
 
 | Input | Rule |
 |---|---|
 | `query` | 2–100 chars (after trimming) |
 | `limit` (search, top) | integer 1–50 |
-| `offset` | integer 0–290 |
+| `offset` (top) | integer 0–290 |
 | `limit` (official) | integer 1–100 |
+| `limit` / `offset` (local tools) | integer 1–100 / 0–2000 |
 | `view` | exactly `all-time`, `trending`, or `hot` |
 | `owner` | `^[a-z0-9](?:[a-z0-9-]{0,38})$/i` |
 | `id` | 3–200 chars total; 2 or 3 `/`-separated segments, each 2–100 chars (letters, digits, `.`, `_`, `-`), no `..` |
@@ -481,11 +584,13 @@ Avoid pasting the token into the file when the client supports environment subst
 
 ### Data sources
 
-The server uses only sources that skills.sh itself sanctions for programmatic use:
+Discovery uses the following skills.sh sources:
 
 1. **Public search API** — `GET https://skills.sh/api/search` (unauthenticated). The same endpoint used by the official `npx skills` CLI (`skills find`).
 2. **Documented v1 API** — `https://skills.sh/api/v1/*` per [skills.sh/docs/api](https://skills.sh/docs/api). Search and skill files require `VERCEL_OIDC_TOKEN` (Bearer auth); the audit endpoint works unauthenticated. With a token configured, `search_skills` upgrades to v1 search (fuzzy/semantic).
 3. **Public site pages** — `/`, `/trending`, `/hot`, `/official`, and skill pages, read from their embedded structured data (never visual scraping of markup).
+
+Local management reads the configured canonical filesystem and compatible CLI locks. GitHub updates use `GET https://api.github.com/repos/{owner}/{repo}/git/trees/{ref-or-sha}?recursive=1` and immutable `/git/blobs/{sha}`. These requests do not use the Vercel token, follow redirects, or execute source URLs recorded in metadata.
 
 Which tool uses what:
 
@@ -508,7 +613,7 @@ Every id is `{source}/{slug}`:
 | GitHub: `{owner}/{repo}/{skill}` | `vercel-labs/skills/find-skills` |
 | Well-known: `{domain}/{skill}` | `uizze.sh/ui-taste` |
 
-Ids are strictly validated and request URLs are assembled **only** from validated segments — the server never accepts a user-supplied URL, so every outbound request stays on skills.sh.
+Ids and GitHub source segments are validated; no tool accepts a user-supplied URL. Discovery requests stay on skills.sh hosts, and update requests stay on `api.github.com`.
 
 ### Caching
 
@@ -530,11 +635,15 @@ Requests to skills.sh are deliberately paced:
 
 The first call after idle time takes around half a second; cached repeats need no request.
 
+GitHub has a separate serialized queue using the same interval/timeout configuration. Update checks are not cached, and GitHub requests are not automatically retried; rate-limit failures are reported explicitly.
+
 ### Security and privacy
 
-- **No telemetry.** No analytics, no phone-home, no third-party endpoints. The only network traffic is GET requests to `skills.sh` / `www.skills.sh`.
+- **No telemetry.** Network traffic consists of GET requests to `skills.sh` / `www.skills.sh` for discovery and `api.github.com` for update checks, installs, and downloads.
 - **Token handling.** `VERCEL_OIDC_TOKEN` is sent only as a `Bearer` header to the skills.sh v1 API, never logged, and never sent anywhere else. Expiry degrades gracefully (search falls back to the public endpoint).
-- **No SSRF.** No tool accepts a URL; all request targets are assembled from validated id segments on fixed `skills.sh` hosts.
+- **GitHub token isolation.** `GITHUB_TOKEN` / `GH_TOKEN` is sent only to `api.github.com`; GitHub redirects are rejected.
+- **Fixed destinations.** No tool accepts a URL or arbitrary local path; outbound targets and canonical filesystem destinations are derived from validated names, repo-relative skill paths, and host configuration.
+- **Opt-in writes.** Filesystem mutations require host enablement plus a fresh preview and explicit confirmation. Treat fetched skill instructions as untrusted content.
 - **Protocol hygiene.** stdout carries only MCP JSON-RPC; every log line goes to stderr.
 
 ### Error handling
@@ -545,12 +654,17 @@ Tool failures are returned as MCP tool errors (`isError: true`) with a stable `[
 |---|---|---|
 | `NETWORK_ERROR` | request failed at the network level | check your connection and retry |
 | `TIMEOUT` | request took too long | retry; raise `SKILLS_TIMEOUT_MS` on slow networks |
-| `RATE_LIMITED` | skills.sh rate limit persisted | wait a moment and retry; raise `SKILLS_MIN_INTERVAL_MS` |
+| `RATE_LIMITED` | skills.sh or GitHub rate limit reached | wait and retry; optionally configure a GitHub token for GitHub requests |
 | `NOT_FOUND` | skill/page does not exist, or no audits yet | verify the id; audits appear after a skill's first install |
 | `INVALID_INPUT` | bad arguments (malformed id, `include_files` without token) | see [Validation caps](#validation-caps-quick-reference) and [Environment variables](#environment-variables) |
-| `PARSE_ERROR` | upstream returned invalid JSON | transient — retry |
-| `UPSTREAM_CHANGED` | skills.sh changed its data structure | upgrade the package |
+| `PARSE_ERROR` | invalid upstream data or unsupported/corrupt CLI lock | inspect the cause; never delete a lock merely to suppress this error |
+| `UPSTREAM_CHANGED` | upstream structure changed or blob integrity failed | retry/upgrade as appropriate; do not bypass verification |
 | `UPSTREAM_ERROR` | upstream 5xx or auth failure | retry; if it mentions the token, refresh it |
+| `FILESYSTEM_ERROR` | configured root/read/write/rollback failure | check permissions and preserve any recovery artifacts |
+| `PERMISSION_DENIED` | writes disabled or execution lacks confirmation | review a preview, obtain approval, and explicitly enable writes |
+| `CONFLICT` | stale preview, local edits, unsafe path, untracked skill, or active guard | resolve the cause; do not force an overwrite |
+| `UNSUPPORTED_SOURCE` | selected skill cannot be updated safely | supported updates require compatible GitHub source metadata |
+| `CANCELLED` | operation cancelled before commit | inspect current state before requesting a new preview |
 
 Example error result:
 
@@ -589,6 +703,10 @@ Example error result:
 - Leaderboard pagination is capped at what pages embed (`offset` 0–290).
 - `weeklyInstalls` values are passed through as-is from the site.
 - Data freshness follows the [Caching](#caching) TTLs; install counts change continuously on skills.sh itself.
+- Management covers canonical `.agents/skills` only. Symlink installs and other agents' copies are not synchronized or removed.
+- `install_skill` supports GitHub sources only and always resolves the repository default branch (`HEAD`); pinning a ref, installing from well-known domains, and migrating other agents' copies remain the official Skills CLI's job.
+- Update checks need compatible GitHub metadata and a verifiable baseline. GitHub outages/rate limits and unsupported sources are reported rather than guessed.
+- Local mutation guards do not lock out unrelated CLI processes. Permissions must keep untrusted local writers out of configured roots; path checks do not eliminate all filesystem check/use races.
 
 ## Legal notes
 

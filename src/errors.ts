@@ -11,7 +11,12 @@ export type SkillsErrorCode =
   | "INVALID_INPUT"
   | "PARSE_ERROR"
   | "UPSTREAM_CHANGED"
-  | "UPSTREAM_ERROR";
+  | "UPSTREAM_ERROR"
+  | "FILESYSTEM_ERROR"
+  | "PERMISSION_DENIED"
+  | "CONFLICT"
+  | "UNSUPPORTED_SOURCE"
+  | "CANCELLED";
 
 export class SkillsError extends Error {
   readonly code: SkillsErrorCode;

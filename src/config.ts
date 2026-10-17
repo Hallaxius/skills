@@ -1,5 +1,7 @@
 /** Environment-driven configuration. */
 
+import { homedir } from "node:os";
+
 export interface Config {
   /**
    * Optional Vercel OIDC token enabling the documented v1 API
@@ -15,6 +17,25 @@ export interface Config {
   readonly minRequestIntervalMs: number;
   /** Per-request timeout, in ms. */
   readonly requestTimeoutMs: number;
+  /**
+   * Explicit project root for local skills (project scope). No cwd fallback;
+   * set SKILLS_PROJECT_ROOT before using project scope.
+   */
+  readonly projectRoot?: string;
+  /** Home directory for local skills global scope. Defaults to node:os homedir when absent. */
+  readonly homeDir?: string;
+  /**
+   * Optional XDG_STATE_HOME for the global skills lock file. When unset the
+   * lock lives under the home .agents directory.
+   */
+  readonly globalStateRoot?: string;
+  /** Local skill mutations enabled only when SKILLS_ALLOW_MUTATIONS is exactly "true". */
+  readonly allowMutations?: boolean;
+  /**
+   * Optional GitHub token (GITHUB_TOKEN or GH_TOKEN) for the fixed-host
+   * GitHub skills adapter. Not authentication for the MCP server itself.
+   */
+  readonly githubToken?: string;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -25,6 +46,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     pageBaseUrl: "https://www.skills.sh",
     minRequestIntervalMs: intFromEnv(env, "SKILLS_MIN_INTERVAL_MS", 500, 0, 60_000),
     requestTimeoutMs: intFromEnv(env, "SKILLS_TIMEOUT_MS", 10_000, 1_000, 60_000),
+    projectRoot: env["SKILLS_PROJECT_ROOT"],
+    homeDir: homedir(),
+    globalStateRoot: env["XDG_STATE_HOME"],
+    allowMutations: env["SKILLS_ALLOW_MUTATIONS"] === "true",
+    githubToken: env["GITHUB_TOKEN"]?.trim() || env["GH_TOKEN"]?.trim() || undefined,
   };
 }
 

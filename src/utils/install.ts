@@ -2,7 +2,7 @@
  * GitHub sources on skills.sh are `owner/repo` pairs with a dot-less owner;
  * well-known sources are single-segment domains (e.g. `uizze.sh`).
  */
-const GITHUB_SOURCE = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
+export const GITHUB_SOURCE = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 
 /**
  * Derives the canonical `npx skills add` command for GitHub-hosted skills.
