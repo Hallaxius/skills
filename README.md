@@ -1,13 +1,13 @@
-# @hallaxius/skills
+# @shtora/skills
 
-[![CI](https://github.com/Hallaxius/skills/actions/workflows/ci.yml/badge.svg)](https://github.com/Hallaxius/skills/actions/workflows/ci.yml)
+[![CI](https://github.com/orgShtora-1/skills/actions/workflows/ci.yml/badge.svg)](https://github.com/orgShtora-1/skills/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Node.js >= 18](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 [![MCP](https://img.shields.io/badge/MCP-stdio-blue.svg)](https://modelcontextprotocol.io)
 
 An unofficial [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that exposes [skills.sh](https://skills.sh) — The Agent Skills Directory — as tools for AI agents and coding assistants.
 
-> **Not affiliated.** This is an independent community project maintained by [Hallaxius](https://github.com/hallaxius). It is NOT associated with, endorsed by, or supported by skills.sh or Vercel. Directory data comes from skills.sh and its users; local management reads your configured filesystem and GitHub sources.
+> **Not affiliated.** This is an independent community project maintained by [Shtora](https://github.com/orgShtora-1). It is NOT associated with, endorsed by, or supported by skills.sh or Vercel. Directory data comes from skills.sh and its users; local management reads your configured filesystem and GitHub sources.
 
 ## Table of contents
 
@@ -75,9 +75,9 @@ There are ten tools: seven are read-only; `remove_skill`, `update_skill`, and `i
 Run the published package directly — nothing to install:
 
 ```bash
-npx -y @hallaxius/skills
+npx -y @shtora/skills
 # or, with Bun:
-bunx @hallaxius/skills
+bunx @shtora/skills
 ```
 
 The server starts on stdio and waits for an MCP client. Point your client's MCP config at the command above (see [MCP client configuration](#mcp-client-configuration)), then ask your agent things like *"find a skill for React performance auditing on skills.sh"*.
@@ -514,7 +514,7 @@ Violations are rejected before any network activity and surface as tool errors w
   "mcpServers": {
     "skills-sh": {
       "command": "npx",
-      "args": ["-y", "@hallaxius/skills"]
+      "args": ["-y", "@shtora/skills"]
     }
   }
 }
@@ -527,7 +527,7 @@ Violations are rejected before any network activity and surface as tool errors w
   "mcpServers": {
     "skills-sh": {
       "command": "npx",
-      "args": ["-y", "@hallaxius/skills"]
+      "args": ["-y", "@shtora/skills"]
     }
   }
 }
@@ -542,7 +542,7 @@ Violations are rejected before any network activity and surface as tool errors w
     "servers": {
       "skills-sh": {
         "type": "local",
-        "command": ["npx", "-y", "@hallaxius/skills"],
+        "command": ["npx", "-y", "@shtora/skills"],
         "disabled": false
       }
     }
@@ -553,14 +553,14 @@ Violations are rejected before any network activity and surface as tool errors w
 **Claude Code (CLI)**:
 
 ```bash
-claude mcp add skills-sh -- npx -y @hallaxius/skills
+claude mcp add skills-sh -- npx -y @shtora/skills
 ```
 
 **Any other MCP client** that supports local stdio servers: use the standard `mcpServers` shape from the Claude Desktop example above.
 
 ### Variants
 
-- Prefer Bun? Replace `npx -y` with `bunx` (`["bunx", "@hallaxius/skills"]`).
+- Prefer Bun? Replace `npx -y` with `bunx` (`["bunx", "@shtora/skills"]`).
 - Need the token or tuning knobs? Add an `env` block to the server entry, for example:
 
 ```json
@@ -568,7 +568,7 @@ claude mcp add skills-sh -- npx -y @hallaxius/skills
   "mcpServers": {
     "skills-sh": {
       "command": "npx",
-      "args": ["-y", "@hallaxius/skills"],
+      "args": ["-y", "@shtora/skills"],
       "env": {
         "VERCEL_OIDC_TOKEN": "your-token-here",
         "SKILLS_MIN_INTERVAL_MS": "500"
@@ -716,4 +716,4 @@ Example error result:
 
 ## License
 
-[MIT](./LICENSE) © Hallaxius
+[MIT](./LICENSE) © Shtora

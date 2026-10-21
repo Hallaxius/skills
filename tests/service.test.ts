@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { SkillsError, type SkillsErrorCode } from "../src/errors";
 import {
   AUDIT_BODY,
+  AUDIT_BODY_WITH_COMMIT,
   PUBLIC_SEARCH_BODY,
   V1_DETAIL_BODY,
   V1_SEARCH_BODY,
@@ -21,6 +22,8 @@ const SKILL_ID = "anthropics/skills/frontend-design";
 const SKILL_PAGE_URL = "https://www.skills.sh/anthropics/skills/frontend-design";
 const V1_DETAIL_URL = "https://skills.sh/api/v1/skills/anthropics/skills/frontend-design";
 const AUDIT_URL = "https://skills.sh/api/v1/skills/audit/vercel-labs/skills/find-skills";
+const WELL_KNOWN_AUDIT_URL = "https://skills.sh/api/v1/skills/audit/smithery.ai/mcp-server";
+const HEAD_SHA = "b146008599c31057cef1c145774cea5d5afb30e8";
 
 /** Routes every leaderboard page fixture to its matching URL. */
 const leaderboardHandler: FetchHandler = (url) => {
@@ -285,6 +288,7 @@ describe("SkillsApiService.getSkillAudits", () => {
     const snyk = audits.audits.find((audit) => audit.provider === "Snyk");
     expect(snyk?.status).toBe("warn");
     expect(snyk?.riskLevel).toBe("MEDIUM");
+    expect(audits.version).toBeUndefined();
   });
 
   test("builds well-known audit URLs from {domain}/{skill} ids", async () => {
@@ -314,6 +318,94 @@ describe("SkillsApiService.getSkillAudits", () => {
     await service.getSkillAudits("vercel-labs/skills/find-skills");
     await service.getSkillAudits("vercel-labs/skills/find-skills");
     expect(calls.length).toBe(1);
+  });
+
+  test("attaches a version block with a commit-pinned install command when HEAD resolves", async () => {
+    const { service } = makeService(
+      (url) => {
+        if (url === AUDIT_URL) return jsonResponse(AUDIT_BODY);
+        throw new Error(`unexpected url: ${url}`);
+      },
+      {},
+      { headCommitSha: async () => HEAD_SHA },
+    );
+    const audits = await service.getSkillAudits("vercel-labs/skills/find-skills");
+    expect(audits.version?.commitSha).toBe(HEAD_SHA);
+    expect(audits.version?.ref).toBe("HEAD");
+    expect(audits.version?.installCommand).toBe(
+      `npx skills add vercel-labs/skills#${HEAD_SHA}@find-skills`,
+    );
+    expect(Number.isNaN(Date.parse(audits.version?.fetchedAt ?? ""))).toBe(false);
+    expect(audits.version?.caveat).toContain("not necessarily the commit the audits ran against");
+  });
+
+  test("omits the version block but still returns audits when HEAD resolution fails", async () => {
+    const { service } = makeService(
+      (url) => {
+        if (url === AUDIT_URL) return jsonResponse(AUDIT_BODY);
+        throw new Error(`unexpected url: ${url}`);
+      },
+      {},
+      {
+        headCommitSha: async () => {
+          throw new SkillsError("RATE_LIMITED", "GitHub API rate limit reached");
+        },
+      },
+    );
+    const audits = await service.getSkillAudits("vercel-labs/skills/find-skills");
+    expect(audits.version).toBeUndefined();
+    expect(audits.audits.length).toBe(5);
+  });
+
+  test("never calls GitHub for well-known (non-GitHub) sources", async () => {
+    let headCalls = 0;
+    const { service } = makeService(
+      (url) => {
+        if (url === WELL_KNOWN_AUDIT_URL) return jsonResponse(AUDIT_BODY);
+        throw new Error(`unexpected url: ${url}`);
+      },
+      {},
+      {
+        headCommitSha: async () => {
+          headCalls += 1;
+          return HEAD_SHA;
+        },
+      },
+    );
+    const audits = await service.getSkillAudits("smithery.ai/mcp-server");
+    expect(audits.version).toBeUndefined();
+    expect(headCalls).toBe(0);
+  });
+
+  test("caches the resolved HEAD commit per source", async () => {
+    let resolutions = 0;
+    const { service } = makeService(
+      (url) => {
+        if (url === AUDIT_URL) return jsonResponse(AUDIT_BODY);
+        throw new Error(`unexpected url: ${url}`);
+      },
+      {},
+      {
+        headCommitSha: async () => {
+          resolutions += 1;
+          return HEAD_SHA;
+        },
+      },
+    );
+    await service.getSkillAudits("vercel-labs/skills/find-skills");
+    await service.getSkillAudits("vercel-labs/skills/find-skills");
+    expect(resolutions).toBe(1);
+  });
+
+  test("passes through per-audit commit identity when skills.sh exposes it", async () => {
+    const { service } = makeService((url) => {
+      if (url === AUDIT_URL) return jsonResponse(AUDIT_BODY_WITH_COMMIT);
+      throw new Error(`unexpected url: ${url}`);
+    });
+    const audits = await service.getSkillAudits("vercel-labs/skills/find-skills");
+    expect(audits.audits.length).toBe(1);
+    expect(audits.audits[0]?.commitSha).toBe(HEAD_SHA);
+    expect(audits.audits[0]?.snapshotHash).toBe("f".repeat(64));
   });
 });
 

@@ -11,10 +11,11 @@ import type {
   SkillAudits,
   SkillDetail,
   SkillFile,
+  SkillVersion,
   SearchResult,
 } from "../types/domain";
 import { type RequestOptions, HttpClient } from "../utils/http";
-import { githubInstallCommand } from "../utils/install";
+import { GITHUB_SOURCE, githubInstallCommand, pinnedInstallCommand } from "../utils/install";
 import { logger } from "../utils/logger";
 import { parseSkillId, type SkillIdParts } from "../utils/validate";
 import { toPublicSearch, toV1Audits, toV1Detail, toV1Search } from "./mappers";
@@ -25,6 +26,18 @@ const TTL_SEARCH_MS = 30_000;
 const TTL_LEADERBOARD_MS = 60_000;
 const TTL_DETAIL_MS = 300_000;
 const TTL_OFFICIAL_MS = 300_000;
+const TTL_HEAD_COMMIT_MS = 300_000;
+
+/**
+ * The HEAD commit is only the current tip of the source repository: audits
+ * describe the snapshot skills.sh published at each `auditedAt`, which can be
+ * older. Pinning the install reproduces the query-time code, not the audit.
+ */
+const VERSION_CAVEAT =
+  "commitSha is the source repo's current HEAD at query time, not necessarily the commit the " +
+  "audits ran against — audits reflect the skills.sh snapshot published as of each audit's " +
+  "auditedAt date, which may be older than this commit. Pinning installCommand reproduces the " +
+  "query-time version; treat audits as possibly stale for it.";
 
 const LEADERBOARD_PAGES: Record<LeaderboardView, string> = {
   "all-time": "/",
@@ -41,6 +54,11 @@ export interface SkillFiles {
 export interface TopSkillsSlice {
   readonly skills: readonly LeaderboardEntry[];
   readonly totalAvailable: number;
+}
+
+/** Resolves the current HEAD commit of a GitHub `{owner}/{repo}` source. */
+export interface HeadCommitResolver {
+  headCommitSha(source: string, signal?: AbortSignal): Promise<string>;
 }
 
 /**
@@ -60,10 +78,12 @@ export class SkillsApiService {
   private readonly filesCache = new TtlCache<SkillFiles | null>(200);
   private readonly auditsCache = new TtlCache<SkillAudits>(200);
   private readonly officialCache = new TtlCache<readonly CuratedOwner[]>(10);
+  private readonly headCommitCache = new TtlCache<SkillVersion>(100);
 
   constructor(
     private readonly http: HttpClient,
     private readonly config: Config,
+    private readonly github?: HeadCommitResolver,
   ) {}
 
   async searchSkills(query: string, limit: number, owner?: string): Promise<readonly SearchResult[]> {
@@ -142,21 +162,52 @@ export class SkillsApiService {
   async getSkillAudits(id: string): Promise<SkillAudits> {
     const parts = this.parseIdOrThrow(id);
     const key = `audits:${parts.source}/${parts.slug}`;
-    const cached = this.auditsCache.get(key);
-    if (cached) return cached;
-    const url = `${this.config.apiBaseUrl}/api/v1/skills/audit/${parts.source}/${parts.slug}`;
-    try {
-      const audits = await this.requestJson(url, {}, toV1Audits, `audits for "${id}"`);
-      this.auditsCache.set(key, audits, TTL_DETAIL_MS);
-      return audits;
-    } catch (error) {
-      if (error instanceof SkillsError && error.code === "NOT_FOUND") {
-        throw new SkillsError(
-          "NOT_FOUND",
-          `no security audits recorded for "${id}" yet — audits are generated automatically after a skill's first install`,
-        );
+    let audits = this.auditsCache.get(key);
+    if (!audits) {
+      const url = `${this.config.apiBaseUrl}/api/v1/skills/audit/${parts.source}/${parts.slug}`;
+      try {
+        audits = await this.requestJson(url, {}, toV1Audits, `audits for "${id}"`);
+        this.auditsCache.set(key, audits, TTL_DETAIL_MS);
+      } catch (error) {
+        if (error instanceof SkillsError && error.code === "NOT_FOUND") {
+          throw new SkillsError(
+            "NOT_FOUND",
+            `no security audits recorded for "${id}" yet — audits are generated automatically after a skill's first install`,
+          );
+        }
+        throw error;
       }
-      throw error;
+    }
+    return this.withVersionBlock(audits, parts);
+  }
+
+  /**
+   * Adds the commit-pinned install block for GitHub sources. Resolution is
+   * best-effort: rate limits or opaque upstream payloads must not hide audits.
+   */
+  private async withVersionBlock(audits: SkillAudits, parts: SkillIdParts): Promise<SkillAudits> {
+    if (!this.github || !GITHUB_SOURCE.test(parts.source)) return audits;
+    const key = `head:${parts.source}`;
+    const cached = this.headCommitCache.get(key);
+    if (cached) return { ...audits, version: cached };
+    try {
+      const commitSha = await this.github.headCommitSha(parts.source);
+      const installCommand = pinnedInstallCommand(parts.source, parts.slug, commitSha);
+      if (!installCommand) return audits;
+      const version: SkillVersion = {
+        commitSha,
+        ref: "HEAD",
+        fetchedAt: new Date().toISOString(),
+        installCommand,
+        caveat: VERSION_CAVEAT,
+      };
+      this.headCommitCache.set(key, version, TTL_HEAD_COMMIT_MS);
+      return { ...audits, version };
+    } catch (error) {
+      logger.warn(
+        `skipping version block for ${parts.source}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return audits;
     }
   }
 

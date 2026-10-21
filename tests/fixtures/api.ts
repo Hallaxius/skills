@@ -42,6 +42,30 @@ export const AUDIT_BODY = JSON.stringify({
   ],
 });
 
+/**
+ * Forward-compat fixture: AUDIT_BODY extended with the per-audit version
+ * identity fields (commitSha / snapshotHash) that skills.sh does NOT expose
+ * today (verified 2026-10). Synthetic — exists to prove the mapper passes
+ * them through the day upstream starts including them.
+ */
+export const AUDIT_BODY_WITH_COMMIT = JSON.stringify({
+  id: "vercel-labs/skills/find-skills",
+  source: "vercel-labs/skills",
+  slug: "find-skills",
+  audits: [
+    {
+      provider: "Gen Agent Trust Hub",
+      slug: "agent-trust-hub",
+      status: "pass",
+      summary: "Audited snapshot identity passed through.",
+      auditedAt: "2026-09-15T08:00:05.922Z",
+      riskLevel: "SAFE",
+      commitSha: "b146008599c31057cef1c145774cea5d5afb30e8",
+      snapshotHash: "f".repeat(64),
+    },
+  ],
+});
+
 export const V1_SEARCH_BODY = JSON.stringify({
   data: [
     {

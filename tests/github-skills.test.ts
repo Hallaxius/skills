@@ -158,3 +158,27 @@ describe("GitHub skill resolution for install", () => {
     expect(unsafe.calls).toHaveLength(0);
   });
 });
+
+describe("GitHub head commit lookups", () => {
+  const headSha = "b146008599c31057cef1c145774cea5d5afb30e8";
+
+  test("resolves the repository's HEAD commit SHA", async () => {
+    const stub = stubFetch(() => jsonResponse(JSON.stringify({ sha: headSha, commit: { message: "chore: release" } })));
+    const source = new GitHubSkillsSource(stub.fetch, { minIntervalMs: 0 });
+
+    await expect(source.headCommitSha("owner/repo")).resolves.toBe(headSha);
+    expect(stub.calls[0]?.url).toBe("https://api.github.com/repos/owner/repo/commits/HEAD");
+  });
+
+  test("rejects non-GitHub sources and unusable commit payloads without guessing", async () => {
+    const unsafe = stubFetch(() => { throw new Error("must not fetch"); });
+    const source = new GitHubSkillsSource(unsafe.fetch, { minIntervalMs: 0 });
+    await expect(source.headCommitSha("uizze.sh")).rejects.toMatchObject({ code: "UNSUPPORTED_SOURCE" });
+    await expect(source.headCommitSha("owner/..")).rejects.toMatchObject({ code: "UNSUPPORTED_SOURCE" });
+    expect(unsafe.calls).toHaveLength(0);
+
+    const stub = stubFetch(() => jsonResponse(JSON.stringify({ sha: "b146008" })));
+    const shortShaSource = new GitHubSkillsSource(stub.fetch, { minIntervalMs: 0 });
+    await expect(shortShaSource.headCommitSha("owner/repo")).rejects.toMatchObject({ code: "UPSTREAM_CHANGED" });
+  });
+});

@@ -82,6 +82,19 @@ export interface SkillAudit {
   /** Raw upstream risk label — observed values include NONE, LOW, SAFE, MEDIUM, HIGH, CRITICAL. */
   readonly riskLevel?: string;
   readonly categories?: readonly string[];
+  /** Commit the audit snapshot was taken at, when skills.sh exposes it. */
+  readonly commitSha?: string;
+  /** Hash of the audited snapshot, when skills.sh exposes it. */
+  readonly snapshotHash?: string;
+}
+
+/** Commit-pinned view of a GitHub source, resolved at query time. */
+export interface SkillVersion {
+  readonly commitSha: string;
+  readonly ref: string;
+  readonly fetchedAt: string;
+  readonly installCommand: string;
+  readonly caveat: string;
 }
 
 export interface SkillAudits {
@@ -89,6 +102,7 @@ export interface SkillAudits {
   readonly source: string;
   readonly slug: string;
   readonly audits: readonly SkillAudit[];
+  readonly version?: SkillVersion;
 }
 
 export interface CuratedSkill {

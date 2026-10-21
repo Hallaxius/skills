@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createLocalSkillsService, createServer } from "../src/server";
 import { LocalSkillsService } from "../src/services/local-skills";
+import type { HeadCommitResolver } from "../src/services/skills-api";
 import { loadConfig } from "../src/config";
 import type { SkillSource } from "../src/types/local-skills";
 import { AUDIT_BODY, PUBLIC_SEARCH_BODY } from "./fixtures/api";
@@ -46,8 +47,9 @@ const fullHandler: FetchHandler = (url) => {
 
 async function connectClient(
   handler: FetchHandler = fullHandler,
+  github?: HeadCommitResolver,
 ): Promise<{ client: Client; server: ReturnType<typeof createServer> }> {
-  const { service } = makeService(handler);
+  const { service } = makeService(handler, {}, github);
   const server = createServer(service);
   const client = new Client({ name: "e2e-test-client", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -245,6 +247,31 @@ describe("MCP server end-to-end (InMemoryTransport)", () => {
       const parsed = JSON.parse(out.text) as { audits: Array<{ provider: string; status: string }> };
       expect(parsed.audits.length).toBe(5);
       expect(parsed.audits[0]?.provider).toBe("Gen Agent Trust Hub");
+    } finally {
+      await closePair(pair);
+    }
+  });
+
+  test("get_skill_audits includes a commit-pinned install command when the repo HEAD resolves", async () => {
+    const headSha = "b146008599c31057cef1c145774cea5d5afb30e8";
+    const pair = await connectClient(fullHandler, { headCommitSha: async () => headSha });
+    try {
+      const out = outcomeOf(
+        await pair.client.callTool({
+          name: "get_skill_audits",
+          arguments: { id: "vercel-labs/skills/find-skills" },
+        }),
+      );
+      expect(out.isError).toBe(false);
+      const parsed = JSON.parse(out.text) as {
+        version?: { commitSha: string; ref: string; installCommand: string; caveat: string };
+      };
+      expect(parsed.version?.commitSha).toBe(headSha);
+      expect(parsed.version?.ref).toBe("HEAD");
+      expect(parsed.version?.installCommand).toBe(
+        `npx skills add vercel-labs/skills#${headSha}@find-skills`,
+      );
+      expect(parsed.version?.caveat).toContain("not necessarily");
     } finally {
       await closePair(pair);
     }

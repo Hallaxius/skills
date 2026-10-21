@@ -55,6 +55,18 @@ export class GitHubSkillsSource implements SkillSource {
     return content;
   }
 
+  /** Resolve the repository's default-branch HEAD commit for commit-pinned installs. */
+  async headCommitSha(source: string, signal?: AbortSignal): Promise<string> {
+    if (!GITHUB_SOURCE.test(source) || [".", ".."].includes(source.split("/")[1]!)) {
+      throw new SkillsError("UNSUPPORTED_SOURCE", "commit resolution requires a GitHub {owner}/{repo} source");
+    }
+    const data = await this.request(`repos/${source}/commits/HEAD`, signal);
+    if (!record(data) || typeof data["sha"] !== "string" || !SHA.test(data["sha"])) {
+      throw new SkillsError("UPSTREAM_CHANGED", "GitHub returned an unrecognized HEAD commit payload");
+    }
+    return data["sha"];
+  }
+
   /** Resolve one skill folder in a repository's default-branch tree (install only). */
   async resolve(source: string, skill: string, folder: string | undefined, signal?: AbortSignal): Promise<ResolvedSkill> {
     if (!GITHUB_SOURCE.test(source) || [".", ".."].includes(source.split("/")[1]!) ||
@@ -166,7 +178,7 @@ export class GitHubSkillsSource implements SkillSource {
       try {
         const response = await this.fetchImpl(`https://api.github.com/${endpoint}`, {
           method: "GET", redirect: "error", signal: controller.signal,
-          headers: { Accept: "application/vnd.github+json", "User-Agent": "skills-sh-mcp/1.1.0",
+          headers: { Accept: "application/vnd.github+json", "User-Agent": "skills-sh-mcp/0.1.0",
             ...(this.options.token ? { Authorization: `Bearer ${this.options.token}` } : {}) },
         });
         if (!response.ok) {

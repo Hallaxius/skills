@@ -1,5 +1,5 @@
 import type { Config } from "../src/config";
-import { SkillsApiService } from "../src/services/skills-api";
+import { SkillsApiService, type HeadCommitResolver } from "../src/services/skills-api";
 import { HttpClient } from "../src/utils/http";
 import { RateLimiter } from "../src/utils/rate-limiter";
 
@@ -32,6 +32,7 @@ export function stubFetch(handler: FetchHandler): { fetch: typeof globalThis.fet
 export function makeService(
   handler: FetchHandler,
   configOverrides: Partial<Config> = {},
+  github?: HeadCommitResolver,
 ): { service: SkillsApiService; calls: RecordedCall[] } {
   const { fetch, calls } = stubFetch(handler);
   const limiter = new RateLimiter(0);
@@ -43,7 +44,7 @@ export function makeService(
     requestTimeoutMs: 2_000,
     ...configOverrides,
   };
-  return { service: new SkillsApiService(http, config), calls };
+  return { service: new SkillsApiService(http, config, github), calls };
 }
 
 export function jsonResponse(body: string, status = 200, headers: Record<string, string> = {}): Response {

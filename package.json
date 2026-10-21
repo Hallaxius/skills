@@ -1,6 +1,6 @@
 {
-  "name": "@hallaxius/skills",
-  "version": "1.1.0",
+  "name": "@shtora/skills",
+  "version": "0.1.0",
   "description": "Unofficial MCP server for skills.sh - The Agent Skills Directory",
   "keywords": [
     "mcp",
@@ -16,14 +16,14 @@
     "anthropic"
   ],
   "license": "MIT",
-  "author": "Hallaxius",
-  "homepage": "https://github.com/hallaxius/skills#readme",
+  "author": "shtora",
+  "homepage": "https://github.com/orgShtora-1/skills#readme",
   "bugs": {
-    "url": "https://github.com/hallaxius/skills/issues"
+    "url": "https://github.com/orgShtora-1/skills/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hallaxius/skills.git"
+    "url": "git+https://github.com/orgShtora-1/skills.git"
   },
   "type": "module",
   "bin": {

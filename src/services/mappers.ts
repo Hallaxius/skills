@@ -117,6 +117,8 @@ export function toV1Audits(body: unknown): SkillAudits | undefined {
       auditedAt,
       riskLevel: asString(item["riskLevel"]),
       categories: asStringArray(item["categories"]),
+      commitSha: asString(item["commitSha"]),
+      snapshotHash: asString(item["snapshotHash"]),
     });
   }
   return { id, source, slug, audits };
