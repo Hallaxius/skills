@@ -6,7 +6,13 @@ describe("local skills environment configuration", () => {
     expect(loadConfig({})).toMatchObject({ projectRoot: undefined, allowMutations: false, githubToken: undefined });
   });
 
-  test.each([undefined, "false", "1", "TRUE", " true "])("does not enable mutations for %s", (value) => {
+  test.each([
+    ["undefined", undefined],
+    ["false", "false"],
+    ["1", "1"],
+    ["TRUE", "TRUE"],
+    ["padded true", " true "],
+  ] as const)("does not enable mutations for %s", (_label, value) => {
     expect(loadConfig({ SKILLS_ALLOW_MUTATIONS: value }).allowMutations).toBe(false);
   });
 

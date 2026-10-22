@@ -246,7 +246,10 @@ describe("local skills", () => {
     expect(await readdir(join(project, ".agents"))).toEqual(["skills"]);
   });
 
-  test.each([false, true])("retains original data when committing the lock fails (rollback failure: %s)", async (rollbackFails) => {
+  test.each([
+    ["failed", true],
+    ["succeeds", false],
+  ] as const)("retains original data when committing the lock fails (rollback %s)", async (_label, rollbackFails) => {
     const path = await installed();
     const lockPath = join(project, "skills-lock.json");
     const lock = await readFile(lockPath, "utf8");
